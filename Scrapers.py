@@ -931,7 +931,10 @@ class ManheimScraper(BaseScraper):
     def scrape(self):
         with sync_playwright() as playwright:
             # Start browser off-screen
-            browser = playwright.chromium.launch(headless=False)
+            browser = playwright.chromium.launch(headless=False,args=[
+                        "--window-position=-10000,-10000",  # Position window off-screen
+                        "--disable-blink-features=AutomationControlled",
+                    ])
             page = browser.new_page()
             self.load_cookies(page)
             page.goto(self.url)
@@ -942,7 +945,10 @@ class ManheimScraper(BaseScraper):
                     browser.close()  # Close off-screen browser
                     self.handle_login(playwright)  # Relaunch on-screen for login
                     # Re-launch off-screen after login
-                    browser = playwright.chromium.launch(headless=False)
+                    browser = playwright.chromium.launch(headless=False,args=[
+                            "--window-position=-10000,-10000",  # Position window off-screen
+                            "--disable-blink-features=AutomationControlled",
+                        ])
                     page = browser.new_page()
                     self.load_cookies(page)
                     page.goto(self.url)
