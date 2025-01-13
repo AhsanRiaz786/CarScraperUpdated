@@ -41,21 +41,19 @@ class MultiScraperThread(QThread):
         self.save_path = save_path
 
     def run(self):
-        try:
-            all_scrapers = []
-            
+        try:            
             # Create and run scrapers for each URL
             for url, additional_data in self.url_data_pairs:
                 self.progress.emit(f"Processing {url}...")
                 scraper = get_scraper(url)
                 scraper.scrape()
                 scraper.data.update(additional_data)
-                all_scrapers.append(scraper)
+                
 
             # Use first car's name for the filename
-            first_car_name = all_scrapers[0].car_name.replace("/", "_").replace("\\", "_")
-            filename = os.path.join(self.save_path, f"{first_car_name}.pdf")
-            BaseScraper.generate_combined_pdf(self,all_scrapers, filename)
+                first_car_name = scraper.car_name.replace("/", "_").replace("\\", "_")
+                filename = os.path.join(self.save_path, f"{first_car_name}.pdf")
+                BaseScraper.generate_combined_pdf(self,scraper, filename)
             self.finished.emit(filename)
         except Exception as e:
             self.error.emit(str(e))
@@ -207,9 +205,9 @@ class MultiCarScraperGUI(QWidget):
                 group_layout.addWidget(half_down_entry)
                 url_data["half_down_entry"] = half_down_entry
 
-            elif "iaai" in url or "manheim" in url:
+            elif "iaai" in url or "manheim" or "copart" in url:
                 # Parts Input
-                parts_label = QLabel("Enter Parts (one per line):")
+                parts_label = QLabel("Enter Anticipated Parts Needed (one per line):")
                 group_layout.addWidget(parts_label)
                 parts_text_edit = QTextEdit()
                 parts_text_edit.setMaximumHeight(100)
@@ -259,10 +257,10 @@ class MultiCarScraperGUI(QWidget):
                 additional_info["Total Price"] = url_data["total_price_entry"].text() + " $"
                 additional_info["Island"] = url_data["island_dropdown"].currentText()
                 additional_info["Half Down"] = url_data["half_down_entry"].text()
-            elif "iaai" in url or "manheim" in url:
-                additional_info["Parts"] = url_data["parts_text_edit"].toPlainText().strip().split("\n")
-                additional_info["Estimated Parts Repair BH"] = url_data["repair_bh_entry"].text() + " $"
-                additional_info["Estimated Parts Repair US"] = url_data["repair_us_entry"].text() + " $"
+            elif "iaai" in url or "manheim" or "copart" in url:
+                additional_info["Anticipated Parts Needed"] = url_data["parts_text_edit"].toPlainText().strip().split("\n")
+                additional_info["Estimated Parts Repair BH"] = "$ " + url_data["repair_bh_entry"].text()
+                additional_info["Estimated Parts Repair US"] = "$ " + url_data["repair_us_entry"].text()
 
             self.additional_data.append((url, additional_info))
         dialog.accept()
@@ -314,11 +312,11 @@ class BaseScraper:
         raise NotImplementedError("Subclasses must implement this method")
 
 
-    def generate_combined_pdf(self, scrapers, filename):
-        c = canvas.Canvas(filename, pagesize=letter)
-        width, height = letter
+    def generate_combined_pdf(self, scraper, filename):
+            c = canvas.Canvas(filename, pagesize=letter)
+            width, height = letter
 
-        for idx, scraper in enumerate(scrapers):
+
             y_position = height - 50
 
             # Add logo
@@ -360,21 +358,22 @@ class BaseScraper:
                         value = value.replace(":", "")
                     if key == "Title/Sale Doc Notes":
                         continue
-                    if key == "Parts":
-                        if value[0] != "":
+                    if key == "Anticipated Parts Needed":
+                        if value[0] != '':
                             y_position -= 20
                             c.setFillColorRGB(1, 0, 0)
-                            c.drawString(x_left, y_position, "Parts:")
+                            c.drawString(x_left, y_position, "Anticipated Parts Needed:")
                             c.setFont("Helvetica", 12)
                             for part in value:
                                 y_position -= 15
                                 c.drawString(x_left + 20, y_position, f"- {part}")
-                            y_position -= 20
+                        y_position -= 20
                     elif key in ["Estimated Parts Repair BH", "Estimated Parts Repair US"]:
-                        if value != " $":
+                        if value != "$ ":
                             y_position -= 40
                             c.setFillColorRGB(1, 0, 0)
                             c.drawString(x_left, y_position, f"{key}: {value}")
+                        y_position -= 20
                     else:
                         c.setFillColorRGB(0, 0, 0)
                         c.drawString(x_left, y_position, f"{key}: {value}")
@@ -386,17 +385,17 @@ class BaseScraper:
                         value = value.replace(":", "")
                     if key == "Title/Sale Doc Notes":
                         continue
-                    if key == "Parts":
+                    if key == "Anticipated Parts Needed":
                         if value[0] != "":
                             c.setFillColorRGB(1, 0, 0)
-                            c.drawString(x_right, y_position, "Parts:")
+                            c.drawString(x_right, y_position, "Anticipated Parts Needed:")
                             c.setFont("Helvetica", 12)
                             for part in value:
                                 y_position -= 15
                                 c.drawString(x_right + 20, y_position, f"- {part}")
-                            y_position -= 20
+                        y_position -= 20
                     elif key in ["Estimated Parts Repair BH", "Estimated Parts Repair US"]:
-                        if value != " $":
+                        if value != "$ ":
                             y_position -= 40
                             c.setFillColorRGB(1, 0, 0)
                             c.drawString(x_right, y_position, f"{key}: {value}")
@@ -459,12 +458,10 @@ class BaseScraper:
                     print(f"Failed to load or crop image {img_url}: {e}")
                     continue
 
-            # Add a new page after each car (except the last one)
-            if idx < len(scrapers) - 1:
-                c.showPage()
 
-        # Save the final PDF
-        c.save()
+
+            # Save the final PDF
+            c.save()
 
 class CopartScraper(BaseScraper): 
     def __init__(self,url,crop_size):
@@ -494,8 +491,8 @@ class CopartScraper(BaseScraper):
                     current_bid_div = page.query_selector("div[ng-if*='dynamiclotDetails.firstBid']")
 
                     for div in car_info:
-                        label = div.query_selector("label").inner_text()
-                        value = div.query_selector("span").inner_text()
+                        label = div.query_selector("label").inner_text() if div.query_selector("label") else ""
+                        value = div.query_selector("span").inner_text() if div.query_selector("span") else ""
                         if "View Report " in value:
                             continue
                         self.data[label] = value
@@ -672,7 +669,7 @@ class IAAIScraper(BaseScraper):
                             
                             key = spans[0].inner_text().strip()
                             value = spans[1].inner_text().strip()
-                            to_leave = ["Branch:","Vehicle Location:","Time Left to Buy:","Pick up location:","Payment is due:","Pick up by:","Pre-bid Closes:","My Max Bid:","Selling Branch:","Restraint System:","Exterior/Interior:","Options:","Manufactued in:","Vehicle Class:","Lane/Run #:","Aisle/Stall:"]
+                            to_leave = ["Branch:","Vehicle Location:","Time Left to Buy:","Pick up location:","Payment is due:","Pick up by:","Pre-bid Closes:","My Max Bid:","Selling Branch:","Restraint System:","Exterior/Interior:","Options:","Manufactued in:","Vehicle Class:","Lane/Run #:","Aisle/Stall:","Current Bid:","Loss:","Actual Cash Value:","Estimated Repair Cost:","Seller:","Seller Type:"]
                             if key in to_leave:
                                 continue
                             if key=="Start Code:":
@@ -684,6 +681,8 @@ class IAAIScraper(BaseScraper):
                                             self.data[key] = value
                                     else:
                                             value = ""
+                            if "Vehicle Score" in key:
+                                key = "Vehicle Score"
 
                             self.data[key] = value
 
