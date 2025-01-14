@@ -41,6 +41,7 @@ class MultiScraperThread(QThread):
         self.save_path = save_path
 
     def run(self):
+        idx = 1 # Index to keep track of the current car being processed
         try:            
             # Create and run scrapers for each URL
             for url, additional_data in self.url_data_pairs:
@@ -51,9 +52,10 @@ class MultiScraperThread(QThread):
                 
 
             # Use first car's name for the filename
-                first_car_name = scraper.car_name.replace("/", "_").replace("\\", "_")
+                first_car_name = scraper.car_name.replace("/", "_").replace("\\", "_")+" "+str(idx)
                 filename = os.path.join(self.save_path, f"{first_car_name}.pdf")
                 BaseScraper.generate_combined_pdf(self,scraper, filename)
+                idx += 1
             self.finished.emit(filename)
         except Exception as e:
             self.error.emit(str(e))
